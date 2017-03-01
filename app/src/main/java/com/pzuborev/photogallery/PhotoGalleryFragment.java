@@ -1,7 +1,10 @@
 package com.pzuborev.photogallery;
 
+import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.util.Log;
@@ -11,8 +14,10 @@ import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.ArrayAdapter;
 import android.widget.GridView;
+import android.widget.ImageView;
 
 import java.util.ArrayList;
+import java.util.List;
 
 
 public class PhotoGalleryFragment extends Fragment {
@@ -22,6 +27,7 @@ public class PhotoGalleryFragment extends Fragment {
     private ArrayList<GalleryItem> mGalleryItems;
     private int mPage;
     private int mPosition;
+    private ThumbnailDownloader<ImageView> mThumbnailDownloader;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -33,6 +39,26 @@ public class PhotoGalleryFragment extends Fragment {
         mPage = 0;
         mGalleryItems = new ArrayList<GalleryItem>();
         new FetchItemsTask().execute(mPage + 1);
+
+        mThumbnailDownloader = new ThumbnailDownloader<>(new Handler());
+        mThumbnailDownloader.setListener(new ThumbnailDownloader.Listener<ImageView>() {
+            @Override
+            public void onThumbnailDownloaded(ImageView imageView, Bitmap bitmap) {
+                if (isVisible()) {
+                    imageView.setImageBitmap(bitmap);
+                }
+            }
+        });
+        mThumbnailDownloader.start();
+        mThumbnailDownloader.getLooper();
+        Log.i(TAG, "onCreate: background thread started");
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        mThumbnailDownloader.quit();
+        Log.i(TAG, "onDestroy: Background thread destroyed");
     }
 
     @Nullable
@@ -64,6 +90,12 @@ public class PhotoGalleryFragment extends Fragment {
     }
 
     @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        mThumbnailDownloader.clearQueue();
+    }
+
+    @Override
     public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
     }
@@ -76,14 +108,11 @@ public class PhotoGalleryFragment extends Fragment {
     private void setupAdapter() {
         if (getActivity() == null || mGridView == null)
             return;
-        Log.d(TAG, "!!!!!!!!!!!setupAdapter: ");
         if (mGalleryItems == null) {
-            Log.d(TAG, "set adapter = null");
             mGridView.setAdapter(null);
         } else {
-            PhotoGalleryAdapter adapter = new PhotoGalleryAdapter();
+            PhotoGalleryAdapter adapter = new PhotoGalleryAdapter(mGalleryItems);
             mGridView.setAdapter(adapter);
-            Log.d(TAG, "set adapter not empty");
         }
 
     }
@@ -117,22 +146,40 @@ public class PhotoGalleryFragment extends Fragment {
     }
 
     private class PhotoGalleryAdapter extends ArrayAdapter<GalleryItem> {
-        public PhotoGalleryAdapter() {
-            super(getActivity(), R.layout.fragment_photo_gallery_item, mGalleryItems);
+        private ImageView mImageView;
+
+        public PhotoGalleryAdapter(List<GalleryItem> items) {
+            super(getActivity(), 0, items);
         }
 
-        @Nullable
+//        @Nullable
+//        @Override
+//        public GalleryItem getItem(int position) {
+//            Log.d(TAG, "getItem: position = " + position);
+//            if (position >= getCount() - 1) {
+//                Log.d(TAG, "need refresh");
+//                new FetchItemsTask().execute(mPage + 1);
+//                notifyDataSetChanged();
+//            }
+//            GalleryItem item = super.getItem(position);
+//            return item;
+//        }
+
+
+        @NonNull
         @Override
-        public GalleryItem getItem(int position) {
-            Log.d(TAG, "getItem: position = " + position);
-            if (position >= getCount() - 1) {
-                Log.d(TAG, "need refresh");
-                new FetchItemsTask().execute(mPage + 1);
-                notifyDataSetChanged();
+        public View getView(int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                convertView = getActivity().getLayoutInflater().inflate(R.layout.fragment_photo_gallery_item, parent, false);
             }
-            GalleryItem item = super.getItem(position);
-            //item.setId(String.valueOf(position));
-            return item;
+
+            mImageView = (ImageView) convertView.findViewById(R.id.gallery_item_imageView);
+            mImageView.setImageResource(R.drawable.brian_up_close);
+
+            GalleryItem item = getItem(position);
+            mThumbnailDownloader.queueThumbnail(mImageView, item.getUrl());
+
+            return convertView;
         }
     }
 }
