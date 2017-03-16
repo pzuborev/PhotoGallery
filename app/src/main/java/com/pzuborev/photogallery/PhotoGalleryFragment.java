@@ -1,21 +1,35 @@
 package com.pzuborev.photogallery;
 
+import android.app.Activity;
+import android.app.SearchManager;
+import android.app.SearchableInfo;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.util.Log;
+import android.util.LruCache;
+import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.ArrayAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
+import android.widget.SearchView;
+import android.widget.Toast;
 
+import java.text.Format;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,9 +39,12 @@ public class PhotoGalleryFragment extends Fragment {
     private static final String CURRENT_POSITION = "CURRENT_POSITION";
     private GridView mGridView;
     private ArrayList<GalleryItem> mGalleryItems;
+    private int mTotalPhotosCount;
+    private int mPagesCount;
     private int mPage;
     private int mPosition;
     private ThumbnailDownloader<ImageView> mThumbnailDownloader;
+    private LruCache<String, Bitmap> mLruCache;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -35,15 +52,16 @@ public class PhotoGalleryFragment extends Fragment {
         Log.d(TAG, "onCreate: ");
 
         setRetainInstance(true);
+        setHasOptionsMenu(true);
 
-        mPage = 0;
-        mGalleryItems = new ArrayList<GalleryItem>();
-        new FetchItemsTask().execute(mPage + 1);
+        updateItems();
 
         mThumbnailDownloader = new ThumbnailDownloader<>(new Handler());
         mThumbnailDownloader.setListener(new ThumbnailDownloader.Listener<ImageView>() {
             @Override
-            public void onThumbnailDownloaded(ImageView imageView, Bitmap bitmap) {
+            public void onThumbnailDownloaded(ImageView imageView, Bitmap bitmap, String url) {
+                if (mLruCache.get(url) == null)
+                    mLruCache.put(url, bitmap);
                 if (isVisible()) {
                     imageView.setImageBitmap(bitmap);
                 }
@@ -52,6 +70,19 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.start();
         mThumbnailDownloader.getLooper();
         Log.i(TAG, "onCreate: background thread started");
+
+        Intent i = new Intent(getActivity(), PollService.class);
+        getActivity().startService(i);
+    }
+
+    public void updateItems() {
+        Log.d(TAG, "updateItems: ");
+        mPage = 0;
+        mTotalPhotosCount = 0;
+        mPagesCount = 0;
+        mGalleryItems = new ArrayList<GalleryItem>();
+        new FetchItemsTask().execute(mPage + 1);
+        mLruCache = new LruCache<>(100);
     }
 
     @Override
@@ -96,6 +127,60 @@ public class PhotoGalleryFragment extends Fragment {
     }
 
     @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        inflater.inflate(R.menu.fragment_photo_gallery, menu);
+
+        MenuItem menuItem = menu.findItem(R.id.menu_item_search);
+        SearchView searchView = (SearchView) menuItem.getActionView();
+        searchView.setOnCloseListener(new SearchView.OnCloseListener() {
+            @Override
+            public boolean onClose() {
+                Log.d(TAG, "onClose: searchView");
+                PreferenceManager.getDefaultSharedPreferences(getActivity())
+                        .edit()
+                        .putString(FlickrFetchr.SEARCH_QUERY, null)
+                        .commit();
+                updateItems();
+                return false;
+            }
+        });
+        SearchManager searchManager = (SearchManager) getActivity().getSystemService(Context.SEARCH_SERVICE);
+        SearchableInfo searchableInfo = searchManager.getSearchableInfo(getActivity().getComponentName());
+        searchView.setSearchableInfo(searchableInfo);
+//        searchView.setIconifiedByDefault(false);
+        searchView.setSubmitButtonEnabled(true);
+//        searchView.setQueryRefinementEnabled(true);
+        searchView.setQuery(
+                PreferenceManager.getDefaultSharedPreferences(getActivity())
+                        .getString(FlickrFetchr.SEARCH_QUERY, null)
+                , false);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+
+        switch (item.getItemId()) {
+            case R.id.menu_item_search:
+                getActivity().onSearchRequested();
+                return true;
+            case R.id.menu_item_clear_search:
+                PreferenceManager.getDefaultSharedPreferences(getActivity())
+                        .edit()
+                        .putString(FlickrFetchr.SEARCH_QUERY, null)
+                        .commit();
+                updateItems();
+                Log.d(TAG, "onOptionsItemSelected: clearSearch!!!!!!!!!!!!!!");
+
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+
+        }
+
+    }
+
+    @Override
     public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
     }
@@ -117,29 +202,48 @@ public class PhotoGalleryFragment extends Fragment {
 
     }
 
-    private class FetchItemsTask extends AsyncTask<Integer, Void, ArrayList<GalleryItem>> {
+    private class FetchItemsTask extends AsyncTask<Integer, Void, GalleryItemList> {
 
         @Override
-        protected ArrayList<GalleryItem> doInBackground(Integer... params) {
+        protected GalleryItemList doInBackground(Integer... params) {
+            Log.d(TAG, "doInBackground: ");
             FlickrFetchr fetchr = new FlickrFetchr();
 
-            for (Integer p : params)
-                return fetchr.fetchItems(p);
-            return new ArrayList<GalleryItem>();
+            Activity activity = getActivity();
+
+            if (activity == null)
+                return GalleryItemList.emptyList();
+
+            for (Integer p : params) {
+                String query = PreferenceManager.getDefaultSharedPreferences(getActivity())
+                        .getString(FlickrFetchr.SEARCH_QUERY, null);
+                if (query != null) {
+                    Log.d(TAG, "doInBackground: search query =" + query);
+                    return fetchr.search(query);
+                } else
+                    return fetchr.fetchItems(p);
+            }
+
+
+            return GalleryItemList.emptyList();
 
 
         }
 
         @Override
-        protected void onPostExecute(ArrayList<GalleryItem> items) {
-            super.onPostExecute(items);
-            mGalleryItems.addAll(items);
-            mPage = mPage + 1;
-
-
+        protected void onPostExecute(GalleryItemList galleryItemList) {
+            super.onPostExecute(galleryItemList);
+            mGalleryItems.addAll(galleryItemList.getItems());
+            mPagesCount = galleryItemList.getPages();
+            mTotalPhotosCount = galleryItemList.getTotal();
+            mPage = galleryItemList.getPage();
             setupAdapter();
             Log.d(TAG, "onPostExecute: position = " + mPosition);
             mGridView.setSelection(mPosition);
+            Toast toast = Toast.makeText(getActivity().getApplicationContext(),
+                    String.format("Total %,d", mTotalPhotosCount), Toast.LENGTH_LONG);
+            toast.setGravity(Gravity.CENTER, 0, 0);
+            toast.show();
         }
 
 
@@ -174,10 +278,13 @@ public class PhotoGalleryFragment extends Fragment {
             }
 
             mImageView = (ImageView) convertView.findViewById(R.id.gallery_item_imageView);
-            mImageView.setImageResource(R.drawable.brian_up_close);
-
             GalleryItem item = getItem(position);
-            mThumbnailDownloader.queueThumbnail(mImageView, item.getUrl());
+            Bitmap bitmap = mLruCache.get(item.getUrl());
+            if (bitmap == null) {
+                mImageView.setImageResource(R.drawable.brian_up_close);
+                mThumbnailDownloader.queueThumbnail(mImageView, item.getUrl());
+            } else
+                mImageView.setImageBitmap(bitmap);
 
             return convertView;
         }

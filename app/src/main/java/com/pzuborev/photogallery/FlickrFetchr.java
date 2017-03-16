@@ -26,6 +26,11 @@ public class FlickrFetchr {
     private static final String PARAM_EXTRAS = "extras";
     private static final String EXTRA_SMALL_URL = "url_s";
     private static final String XML_PHOTO = "photo";
+    private static final String XML_PHOTOS = "photos";
+    private static final String METHOD_SEARCH = "flickr.photos.search";
+    private static final String PARAM_TEXT = "text";
+
+    public static final String SEARCH_QUERY = "searchQuery";
 
     byte[] getURLBytes(String urlString) throws IOException {
         URL url = new URL(urlString);
@@ -54,14 +59,9 @@ public class FlickrFetchr {
         return new String(getURLBytes(urlString));
     }
 
-    public ArrayList<GalleryItem> fetchItems(int page){
-        ArrayList<GalleryItem> items = new ArrayList<>();
-        String uri = Uri.parse(ENDPOINT).buildUpon()
-                .appendQueryParameter("method", METHOD_GET_RECENT)
-                .appendQueryParameter("api_key", API_KEY)
-                .appendQueryParameter("page", String.valueOf(page <= 0 ? 1 : page))
-                .appendQueryParameter(PARAM_EXTRAS, EXTRA_SMALL_URL)
-                .build().toString();
+    public GalleryItemList downloadGalaryItems(String uri){
+        GalleryItemList items = new GalleryItemList();
+
         try {
             String xmlString = getURLString(uri);
             Log.d(TAG, xmlString);
@@ -76,11 +76,34 @@ public class FlickrFetchr {
         return items;
     }
 
-    private void parseItems(ArrayList<GalleryItem> items, XmlPullParser parser) throws IOException, XmlPullParserException {
+    public GalleryItemList fetchItems(int page) {
+        Log.d(TAG, "fetchItems: ");
+        String uri = Uri.parse(ENDPOINT).buildUpon()
+                .appendQueryParameter("method", METHOD_GET_RECENT)
+                .appendQueryParameter("api_key", API_KEY)
+                .appendQueryParameter("page", String.valueOf(page <= 0 ? 1 : page))
+                .appendQueryParameter(PARAM_EXTRAS, EXTRA_SMALL_URL)
+                .build().toString();
+        return downloadGalaryItems(uri);
+    }
+
+    public GalleryItemList search(String query) {
+        Log.d(TAG, "search: " + query);
+        String uri = Uri.parse(ENDPOINT).buildUpon()
+                .appendQueryParameter("method", METHOD_SEARCH)
+                .appendQueryParameter("api_key", API_KEY)
+                .appendQueryParameter(PARAM_EXTRAS, EXTRA_SMALL_URL)
+                .appendQueryParameter(PARAM_TEXT, query)
+                .build().toString();
+
+        Log.d(TAG, "search: uri = " + uri);
+        return downloadGalaryItems(uri);
+    }
+
+    private void parseItems(GalleryItemList galleryItemList, XmlPullParser parser) throws IOException, XmlPullParserException {
         int eventType = parser.next();
         while (eventType != XmlPullParser.END_DOCUMENT){
             if (eventType == XmlPullParser.START_TAG && XML_PHOTO.equals(parser.getName())){
-
                 String id = parser.getAttributeValue(null, "id");
                 String caption = parser.getAttributeValue(null, "title");
                 String smallUrl = parser.getAttributeValue(null, EXTRA_SMALL_URL);
@@ -88,8 +111,16 @@ public class FlickrFetchr {
                 item.setCaption(caption);
                 item.setId(id);
                 item.setUrl(smallUrl);
-                items.add(item);
+                galleryItemList.getItems().add(item);
 
+            }
+            else if (eventType == XmlPullParser.START_TAG && XML_PHOTOS.equals(parser.getName())){
+                String total = parser.getAttributeValue(null, "total");
+                String pages = parser.getAttributeValue(null, "pages");
+                String page = parser.getAttributeValue(null, "page");
+                galleryItemList.setTotal(Integer.parseInt(total));
+                galleryItemList.setPages(Integer.parseInt(pages));
+                galleryItemList.setPage(Integer.parseInt(page));
             }
             eventType = parser.next();
         }

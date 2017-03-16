@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:tools="http://schemas.android.com/tools"
+      xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_item_search"
+        android:showAsAction="ifRoom"
+        android:title="@string/menu_tem_search"
+        android:icon="@android:drawable/ic_menu_search"
+        tools:ignore="AppCompatResource"
+        android:actionViewClass="android.widget.SearchView"
+        />
+    <item
+        android:id="@+id/menu_item_clear_search"
+        android:showAsAction="never"
+        android:title="clear_search"
+        android:icon="@android:drawable/ic_menu_delete"
+        tools:ignore="AppCompatResource"/>
+</menu>
