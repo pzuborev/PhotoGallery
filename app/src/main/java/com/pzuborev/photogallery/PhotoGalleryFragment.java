@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.SearchManager;
 import android.app.SearchableInfo;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -29,7 +28,6 @@ import android.widget.ImageView;
 import android.widget.SearchView;
 import android.widget.Toast;
 
-import java.text.Format;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -71,8 +69,7 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.getLooper();
         Log.i(TAG, "onCreate: background thread started");
 
-        Intent i = new Intent(getActivity(), PollService.class);
-        getActivity().startService(i);
+        PollService.setServiceAlarm(getActivity(), true);
     }
 
     public void updateItems() {
@@ -139,7 +136,7 @@ public class PhotoGalleryFragment extends Fragment {
                 Log.d(TAG, "onClose: searchView");
                 PreferenceManager.getDefaultSharedPreferences(getActivity())
                         .edit()
-                        .putString(FlickrFetchr.SEARCH_QUERY, null)
+                        .putString(FlickrFetchr.PREF_SEARCH_QUERY, null)
                         .commit();
                 updateItems();
                 return false;
@@ -153,7 +150,7 @@ public class PhotoGalleryFragment extends Fragment {
 //        searchView.setQueryRefinementEnabled(true);
         searchView.setQuery(
                 PreferenceManager.getDefaultSharedPreferences(getActivity())
-                        .getString(FlickrFetchr.SEARCH_QUERY, null)
+                        .getString(FlickrFetchr.PREF_SEARCH_QUERY, null)
                 , false);
     }
 
@@ -167,16 +164,33 @@ public class PhotoGalleryFragment extends Fragment {
             case R.id.menu_item_clear_search:
                 PreferenceManager.getDefaultSharedPreferences(getActivity())
                         .edit()
-                        .putString(FlickrFetchr.SEARCH_QUERY, null)
+                        .putString(FlickrFetchr.PREF_SEARCH_QUERY, null)
                         .commit();
                 updateItems();
                 Log.d(TAG, "onOptionsItemSelected: clearSearch!!!!!!!!!!!!!!");
 
                 return true;
+            case R.id.menu_item_toggle_polling:
+                PollService.setServiceAlarm(getActivity(), !PollService.isServiceAlarmOn(getActivity()));
+                getActivity().invalidateOptionsMenu();
+                return true;
             default:
                 return super.onOptionsItemSelected(item);
 
         }
+
+    }
+
+    @Override
+    public void onPrepareOptionsMenu(Menu menu) {
+        super.onPrepareOptionsMenu(menu);
+        MenuItem togglePolling = menu.findItem(R.id.menu_item_toggle_polling);
+        if (PollService.isServiceAlarmOn(getActivity())) {
+            togglePolling.setTitle(R.string.stop_polling);
+        } else {
+            togglePolling.setTitle(R.string.start_polling);
+        }
+
 
     }
 
@@ -216,7 +230,7 @@ public class PhotoGalleryFragment extends Fragment {
 
             for (Integer p : params) {
                 String query = PreferenceManager.getDefaultSharedPreferences(getActivity())
-                        .getString(FlickrFetchr.SEARCH_QUERY, null);
+                        .getString(FlickrFetchr.PREF_SEARCH_QUERY, null);
                 if (query != null) {
                     Log.d(TAG, "doInBackground: search query =" + query);
                     return fetchr.search(query);

@@ -15,4 +15,9 @@
         android:title="clear_search"
         android:icon="@android:drawable/ic_menu_delete"
         tools:ignore="AppCompatResource"/>
+    <item
+        android:title="@string/start_polling"
+        android:id="@+id/menu_item_toggle_polling"
+        android:showAsAction="ifRoom"
+        tools:ignore="AppCompatResource"/>
 </menu>

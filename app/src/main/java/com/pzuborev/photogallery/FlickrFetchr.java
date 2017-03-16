@@ -30,7 +30,8 @@ public class FlickrFetchr {
     private static final String METHOD_SEARCH = "flickr.photos.search";
     private static final String PARAM_TEXT = "text";
 
-    public static final String SEARCH_QUERY = "searchQuery";
+    public static final String PREF_SEARCH_QUERY = "searchQuery";
+    public static final String PREF_LAST_RESULT_ID = "lastResultId";
 
     byte[] getURLBytes(String urlString) throws IOException {
         URL url = new URL(urlString);
