@@ -24,5 +24,5 @@ public abstract class SingleFragmentActivity extends FragmentActivity {
         }
     }
 
-    protected abstract PhotoGalleryFragment CreateFragment();
+    protected abstract Fragment CreateFragment();
 }
