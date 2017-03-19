@@ -1,5 +1,6 @@
 package com.pzuborev.photogallery;
 
+import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.IntentService;
 import android.app.Notification;
@@ -19,6 +20,10 @@ public class PollService extends IntentService {
 
     private static final String TAG = "PollService";
     private static final int POLL_INTERVAL = 5 * 60 * 1000;
+    public static final String PREF_IS_ALARM_ON = "isAlarmOn";
+
+    public static final String ACTION_SHOW_NOTIFICATION = "com.pzuborev.photogallery.ACTION_SHOW_NOTIFICATION";
+    public static final String PERM_PRIVATE = "com.pzuborev.photogalary.PRIVATE";
 
     public PollService() {
         super(TAG);
@@ -36,6 +41,11 @@ public class PollService extends IntentService {
             alarmManager.cancel(pi);
             pi.cancel();
         }
+
+        PreferenceManager.getDefaultSharedPreferences(context)
+                .edit()
+                .putBoolean(PREF_IS_ALARM_ON, isOn)
+                .commit();
 
     }
 
@@ -85,9 +95,9 @@ public class PollService extends IntentService {
                     .setContentIntent(pi)
                     .setAutoCancel(true)
                     .build();
-            NotificationManager notificationManager = (NotificationManager)
-                    getSystemService(NOTIFICATION_SERVICE);
-            notificationManager.notify(0, notification);
+
+
+            showBackgroundNotification(0, notification);
         } else
             Log.d(TAG, "onHandleIntent: Got old result id = " + resultId);
 
@@ -96,6 +106,13 @@ public class PollService extends IntentService {
                 .commit();
 
 
+    }
+
+    private void showBackgroundNotification(int requestCode, Notification notification) {
+        Intent i = new Intent(ACTION_SHOW_NOTIFICATION);
+        i.putExtra("REQUEST_CODE", requestCode);
+        i.putExtra("NOTIFICATION", notification);
+        sendOrderedBroadcast(i, PERM_PRIVATE, null, null, Activity.RESULT_OK, null, null);
     }
 
 }
